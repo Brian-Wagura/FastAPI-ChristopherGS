@@ -1,7 +1,12 @@
-from fastapi import FastAPI, APIRouter, Query
-
+from fastapi import FastAPI, APIRouter, Query, HTTPException, Request
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
+from typing import Any
 from schemas import RecipeSearchResults, Recipe, RecipeCreate
 from recipe_data import RECIPES
+
+BASE_PATH = Path(__file__).resolve().parent
+TEMPLATES = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 
 # Instantiate a FastAPI app object, which is a
 # Python class that provides all the functionality for
@@ -15,12 +20,16 @@ api_router = APIRouter()
 
 # Define a basic GET endpoint for our API.
 @api_router.get("/", status_code=200)
-def root() -> dict:
+def root(request: Request) -> dict:
     """
     Root GET
     """
 
-    return {"msg": "Hello World!"}
+    # Updated to serve a Jinja2 template
+    return TEMPLATES.TemplateResponse(
+        "index.html",
+        {"request": request, "recipes": RECIPES},
+    )
 
 
 # Include a response_model field. Here we define the structure of the JSON
@@ -29,16 +38,20 @@ def root() -> dict:
 # The type hints for the function arguments which match
 #  the URL path parameters are used by FastAPI to perform
 #  automatic validation and conversion.
-def fetch_recipe(*, recipe_id: int) -> dict:
+def fetch_recipe(*, recipe_id: int) -> Any:
     """
     Fetch a single recipe by id
     """
     # Simulate fetching data by ID from a database with
     # a simple list comprehension with an ID conditional check.
     result = [recipe for recipe in RECIPES if recipe["id"] == recipe_id]
-    if result:
-        # Serialized JSON response.
-        return result[0]
+    if not result:
+        # the exception is raised, not returned - you will get a validation
+        # error otherwise.
+        raise HTTPException(
+            status_code=404, detail=f"Recipe with ID {recipe_id} not found"
+        )
+    return result[0]
 
 
 @api_router.get("/search/", status_code=200, response_model=Recipe)
@@ -49,7 +62,7 @@ def fetch_recipe(*, recipe_id: int) -> dict:
 def search_recipes(
     *,
     keyword: str | None = Query(None, min_length=3, example="burger"),
-    max_results: int | None = 10
+    max_results: int | None = 10,
 ) -> dict:
     """
     Search for recipes based on label keyword
@@ -86,4 +99,4 @@ app.include_router(api_router)
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8080, log_level="debug")
+    uvicorn.run(app, host="0.0.0.0", port=8180, log_level="debug")
